@@ -1,3 +1,3 @@
 module.exports = {
-    TestModel: require("./Test"),
+    LocationModel: require("./Location"),
 };

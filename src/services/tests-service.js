@@ -1,4 +1,4 @@
-const { default: mongoose } = require("mongoose");
+/*const { default: mongoose } = require("mongoose");
 const {
   UsersRepository,
   MobileNoVerificationRepository,
@@ -363,4 +363,4 @@ class UsersService {
   }
 }
 
-module.exports = UsersService;
+module.exports = UsersService;*/

@@ -1,3 +1,4 @@
 module.exports = {
-    Tests: require("./tests"),
+    //Tests: require("./tests"),
+    Locations: require("./locations"),
   };

@@ -1,4 +1,4 @@
-const UserAuth = require("./middlewares/auth");
+/*const UserAuth = require("./middlewares/auth");
 const { default: mongoose } = require("mongoose");
 const UsersService = require("../services/tests-service");
 const now = new Date();
@@ -206,4 +206,4 @@ module.exports = (app) => {
     }
   });
 
-};
+};*/

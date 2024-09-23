@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const {
-  Tests,
+    Locations
 } = require("./src/api");
 const HandleErrors = require("./src/utils/error-handler");
 
@@ -18,8 +18,11 @@ module.exports = async (app) => {
     res.status(500).send("Internal Server Error");
   });
 
+
+
+
   //api
-  Tests(app);
+  Locations(app);
   // error handling
   app.use(HandleErrors);
 };
