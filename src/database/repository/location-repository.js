@@ -1,163 +1,173 @@
-const {
-  APIError,
-  BadRequestError,
-  STATUS_CODES,
-} = require("../../utils/app-errors");
+const mongoose = require("mongoose"); // Ensure mongoose is imported
+const { APIError, STATUS_CODES } = require("../../utils/app-errors");
 const { LocationModel } = require("../models");
 
 class LocationRepository {
-  //############ Create new location ############
+  // ############ Create new location ############
   async createNewLocation({
-    storeId,
-    locationId,
-    locationName,
-    address,
-    status,
+    locations,
     userName,
     password,
     logoUrl,
-    isEmailVerification,
-    isAccountVerification,
+    isEmailVerification = false,
+    isAccountVerification = false,
   }) {
     try {
+      // Validate locations
+      if (!Array.isArray(locations) || locations.length === 0) {
+        throw new APIError(
+          "Invalid locations data. Locations should be a non-empty array.",
+          STATUS_CODES.BAD_REQUEST,
+          "API Error"
+        );
+      }
+
+      // Prepare location entries
+      const locationEntries = locations.map((loc) => {
+        if (!loc.locationName || !loc.address) {
+          throw new APIError(
+            "Location name and address are required fields.",
+            STATUS_CODES.BAD_REQUEST,
+            "API Error"
+          );
+        }
+
+        return {
+          locationId: loc.locationId || new mongoose.Types.ObjectId(), // Generate a new ObjectId if not provided
+          locationName: loc.locationName, // Required field
+          address: loc.address, // Required field
+          status: loc.status || "active", // Default to 'active' if status not provided
+        };
+      });
+
+      // Create a new location entry
       const location = new LocationModel({
-        storeId,
-        Location: [
-          {
-            locationId,
-            locationName,
-            address,
-            status,
-          },
-        ],
+        locations: locationEntries,
         userName,
-        password,
-        logoUrl,
+        password, // Password will be hashed automatically by the schema pre-save hook
+        logoUrl: logoUrl || null, // Default to null if logoUrl is not provided
         isEmailVerification,
         isAccountVerification,
       });
-      return await location.save();
+
+      // Save and return the created location
+      const savedLocation = await location.save();
+      return savedLocation;
     } catch (err) {
-      console.log("Error", err);
-      throw APIError(
-        "API Error",
+      console.error("Error creating location:", err.message || err);
+
+      // Handle specific mongoose validation errors
+      if (err instanceof mongoose.Error.ValidationError) {
+        throw new APIError(
+          "Validation Error",
+          STATUS_CODES.BAD_REQUEST,
+          err.message
+        );
+      } else if (err.code === 11000) {
+        // Handle MongoDB duplicate key error
+        throw new APIError(
+          "Duplicate Entry",
+          STATUS_CODES.CONFLICT,
+          "Location with similar details already exists"
+        );
+      } else {
+        throw new APIError(
+          "Unable to create location",
+          STATUS_CODES.INTERNAL_ERROR,
+          "API Error"
+        );
+      }
+    }
+  }
+
+  // ############ Get location by ID ############
+  async getLocationById(locationId) {
+    try {
+      // Validate the ObjectId format
+      if (!mongoose.Types.ObjectId.isValid(locationId)) {
+        throw new APIError(
+          "Invalid location ID format.",
+          STATUS_CODES.BAD_REQUEST,
+          "API Error"
+        );
+      }
+
+      // Find the location by ID
+      const location = await LocationModel.findById(locationId);
+
+      if (!location) {
+        throw new APIError(
+          "Location not found.",
+          STATUS_CODES.NOT_FOUND,
+          "API Error"
+        );
+      }
+
+      return location;
+    } catch (err) {
+      console.error("Error retrieving location:", err.message || err);
+
+      // Handle invalid ObjectId format error
+      if (err instanceof mongoose.Error.CastError) {
+        throw new APIError(
+          "Invalid location ID format.",
+          STATUS_CODES.BAD_REQUEST,
+          "API Error"
+        );
+      }
+
+      throw new APIError(
+        "Unable to retrieve location",
         STATUS_CODES.INTERNAL_ERROR,
-        "Unable to create location"
+        "API Error"
       );
     }
   }
 
-  //############ Update location status ############
-  async updateLocationStatus({ locationId, status }) {
+  // ############ Update location by ID ############
+  async updateLocationById(locationId, updateData) {
     try {
-      let filterQuery = { "Location.locationId": locationId };
-      let updateQuery = { "Location.$.status": status };
-      return await LocationModel.findOneAndUpdate(filterQuery, updateQuery, {
-        rawResult: true,
-        new: true, // to return updated document
-        upsert: false, // avoid creating if not found
-      });
-    } catch (err) {
-      console.log("Error", err);
-      throw APIError(
-        "API Error",
-        STATUS_CODES.INTERNAL_ERROR,
-        "Unable to update location status"
-      );
-    }
-  }
+      // Validate the ObjectId format
+      if (!mongoose.Types.ObjectId.isValid(locationId)) {
+        throw new APIError(
+          "Invalid location ID format.",
+          STATUS_CODES.BAD_REQUEST,
+          "API Error"
+        );
+      }
 
-  //############ Block a location ############
-  async blockLocation({ locationId }) {
-    try {
-      let filterQuery = { "Location.locationId": locationId };
-      let updateQuery = { "Location.$.status": "Blocked" };
-      return await LocationModel.findOneAndUpdate(filterQuery, updateQuery, {
-        rawResult: true,
-        new: true, // to return updated document
-        upsert: false,
-      });
-    } catch (err) {
-      console.log("Error", err);
-      throw APIError(
-        "API Error",
-        STATUS_CODES.INTERNAL_ERROR,
-        "Unable to block location"
+      // Update the location by ID
+      const updatedLocation = await LocationModel.findByIdAndUpdate(
+        locationId,
+        updateData,
+        { new: true, runValidators: true } // Return the updated document and validate the update
       );
-    }
-  }
 
-  //############ Find location by storeId ############
-  async findLocationByStoreId({ storeId }) {
-    try {
-      return await LocationModel.findOne({ storeId }).select({
-        "Location.locationId": 1,
-        "Location.locationName": 1,
-        "Location.address": 1,
-        "Location.status": 1,
-      });
-    } catch (err) {
-      console.log("Error", err);
-      throw APIError(
-        "API Error",
-        STATUS_CODES.INTERNAL_ERROR,
-        "Unable to find location by storeId"
-      );
-    }
-  }
+      if (!updatedLocation) {
+        throw new APIError(
+          "Location not found or update failed.",
+          STATUS_CODES.NOT_FOUND,
+          "API Error"
+        );
+      }
 
-  //############ Find location by locationId ############
-  async findLocationById({ locationId }) {
-    try {
-      return await LocationModel.findOne({
-        "Location.locationId": locationId,
-      }).select({
-        "Location.$": 1, // Selects the matching element in the array
-      });
+      return updatedLocation;
     } catch (err) {
-      console.log("Error", err);
-      throw APIError(
-        "API Error",
-        STATUS_CODES.INTERNAL_ERROR,
-        "Unable to find location by locationId"
-      );
-    }
-  }
+      console.error("Error updating location:", err.message || err);
 
-  //############ Update location address ############
-  async updateLocationAddress({ locationId, address }) {
-    try {
-      let filterQuery = { "Location.locationId": locationId };
-      let updateQuery = { "Location.$.address": address };
-      return await LocationModel.findOneAndUpdate(filterQuery, updateQuery, {
-        rawResult: true,
-        new: true,
-        upsert: false,
-      });
-    } catch (err) {
-      console.log("Error", err);
-      throw APIError(
-        "API Error",
-        STATUS_CODES.INTERNAL_ERROR,
-        "Unable to update location address"
-      );
-    }
-  }
+      // Handle invalid ObjectId format error
+      if (err instanceof mongoose.Error.CastError) {
+        throw new APIError(
+          "Invalid location ID format.",
+          STATUS_CODES.BAD_REQUEST,
+          "API Error"
+        );
+      }
 
-  //############ Get all locations for a user ############
-  async getLocationsByUser({ userName }) {
-    try {
-      return await LocationModel.find({ userName }).select({
-        storeId: 1,
-        Location: 1,
-        userName: 1,
-      });
-    } catch (err) {
-      console.log("Error", err);
-      throw APIError(
-        "API Error",
+      throw new APIError(
+        "Unable to update location",
         STATUS_CODES.INTERNAL_ERROR,
-        "Unable to find locations for user"
+        "API Error"
       );
     }
   }
