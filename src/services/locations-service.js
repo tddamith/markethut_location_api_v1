@@ -1,153 +1,105 @@
 const { default: mongoose } = require("mongoose");
-const { LocationRepository } = require("../database");
-const { 
-  FormateData, 
-  GeneratePassword,
-  GenerateSalt,
-  GenerateOTPSignature,
-} = require("../utils");
+const LocationRepository  = require("../database/repository/location-repository.js");
+const { FormateData, GenerateOTPSignature } = require("../utils");
 const { APIError } = require("../utils/app-errors");
 const { OtPGenerate } = require("../utils/verification-code-handler");
+const LocationModel = require('../database/models/Location.js'); 
+
 
 class LocationsService {
   constructor() {
     this.repository = new LocationRepository();
   }
 
-  // ############ Create new Location ############
-  async createNewLocation(locationInputs) {
-    console.log("create new Location ===>", { locationInputs });
+  // ############ Create New Location ############
+async createNewLocation(locationData) {
+  console.log("Creating new location ===>", { locationData });
 
-    const {
-      locations = [], // Expecting locations to be an array of objects
-      userName,
-      password,
-      logoUrl,
-      isEmailVerification = false,
-      isAccountVerification = false,
-    } = locationInputs;
+  try {
+      const location = new LocationModel(locationData); // Create a new Location document
+      const result = await location.save(); // Save to the database
 
-    try {
-      // Input validation
-      if (!Array.isArray(locations) || locations.length === 0) {
-        throw new APIError("Locations must be provided as a non-empty array", 400);
-      }
-      if (!userName || !password) {
-        throw new APIError("User name and password are required", 400);
-      }
-
-      // Password hashing
-      let salt = await GenerateSalt();
-      let hashedPassword = await GeneratePassword(password, salt);
-
-      // Prepare new location object
-      const newLocation = {
-        locations, // Save the locations array
-        userName,
-        password: hashedPassword,
-        logoUrl: logoUrl || "",
-        isEmailVerification,
-        isAccountVerification,
-        status: "active", // Default status
-      };
-
-      // Call repository to create new location
-      const result = await this.repository.createNewLocation(newLocation);
-
-      // If the location creation fails
-      if (!result) {
-        throw new APIError("Location creation failed", 500);
-      }
-
-      // Send OTP logic (optional)
-      let token = await GenerateOTPSignature({
-        locationId: result._id, // Assuming result returns the created location with an _id
-        locationName: locations[0].locationName, // Adjust this as per your structure
-        address: locations[0].address, // Assuming the first location has an address
-      });
-      const otpCode = await OtPGenerate();
-
-      // Implement OTP sending logic here (via email, SMS, etc.)
-
+      // Format the response according to the specified structure
       return FormateData({
-        status: true,
-        message: "Location created successfully.",
-        data: {
-          location: result,
-          token, // You may return the OTP code if needed
-        },
+          message: "Location created successfully.",
+          status: true,
+          data: {
+              storeId: result.storeId, // Return the storeId
+              locations: result.locations.map(loc => ({
+                  locationId: loc.locationId.toString(), // Ensure it’s a string
+                  locationName: loc.locationName,
+                  address: loc.address,
+                  status: loc.status, // Include the status if needed
+              })),
+              createdAt: result.createdAt,
+              updatedAt: result.updatedAt,
+              __v: result.__v,
+          },
       });
-
-    } catch (err) {
-      console.error("Error in Location service:", err);
-      throw new APIError("Error in creating new location", err.statusCode || 500);
-    }
+  } catch (err) {
+      console.error("Error creating location:", err);
+      throw new APIError("Failed to create location", err.statusCode || 500);
   }
+}
 
-  // ############ Get Location by ID ############
-  async getLocationById(locationId) {
-    console.log("Get Location by ID ===>", { locationId });
+// ############ Get Location by ID ############
+async getLocationById(locationId, storeId) {
+  console.log("Get Location by ID ===>", { locationId, storeId });
 
-    try {
-      // Validate locationId
-      if (!locationId) {
-        throw new APIError("Location ID must be provided", 400);
+  try {
+      // Call the repository method to retrieve location by locationId and storeId
+      const locationData = await this.repository.getLocationById(locationId, storeId);
+
+      if (!locationData) {
+          throw new APIError("Location not found", 404);
       }
 
-      // Call repository to retrieve location
-      const location = await this.repository.getLocationById(locationId);
-
-      // If the location is not found
-      if (!location) {
-        throw new APIError("Location not found", 404);
-      }
-
-      return FormateData({
-        status: true,
-        message: "Location retrieved successfully.",
-        data: location,
-      });
-
-    } catch (err) {
+      // Return the formatted location data
+      return {
+          message: "Location retrieved successfully.",
+          status: true,
+          data: locationData
+      };
+  } catch (err) {
       console.error("Error in getting location:", err);
       throw new APIError("Failed to retrieve location", err.statusCode || 500);
-    }
   }
+}
 
-  // ############ Update Location by ID ############
-  async updateLocationById(locationId, updateData) {
-    console.log("Update Location by ID ===>", { locationId, updateData });
+ // ############ Update Location by ID and StoreID ############
+ async updateLocationById(locationId, storeId, updateData) {
+  console.log("Update Location by ID and StoreID ===>", { locationId, storeId, updateData });
 
-    try {
-      // Validate locationId
-      if (!locationId) {
-        throw new APIError("Location ID must be provided", 400);
-      }
-
-      // Validate updateData
-      if (!updateData || Object.keys(updateData).length === 0) {
-        throw new APIError("Update data must be provided", 400);
-      }
-
-      // Call repository to update location by ID
-      const updatedLocation = await this.repository.updateLocationById(locationId, updateData);
-
-      // If the location update fails
-      if (!updatedLocation) {
-        throw new APIError("Location update failed", 500);
-      }
-
-      return FormateData({
-        status: true,
-        message: "Location updated successfully.",
-        data: updatedLocation,
-      });
-
-    } catch (err) {
-      console.error("Error in updating location:", err);
-      throw new APIError("Failed to update location", err.statusCode || 500);
+  try {
+    // Validate locationId
+    if (!mongoose.Types.ObjectId.isValid(locationId)) {
+      throw new APIError("Invalid location ID format", 400);
     }
+
+    // Validate storeId
+    if (!storeId) {
+      throw new APIError("Store ID must be provided", 400);
+    }
+
+    // Validate updateData
+    if (!updateData || Object.keys(updateData).length === 0) {
+      throw new APIError("Update data must be provided", 400);
+    }
+
+    // Call repository to update location by both locationId and storeId
+    const updatedLocation = await this.repository.updateLocationByIdAndStoreId(locationId, storeId, updateData);
+
+    return  {
+      message: "Location updated successfully.",
+      status: true,
+      data: updateData
+  } // Return the formatted response
+  } catch (err) {
+    console.error("Error in updating location:", err);
+    throw new APIError("Failed to update location", err.statusCode || 500);
   }
+}
+
 }
 
 module.exports = LocationsService;

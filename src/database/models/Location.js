@@ -1,10 +1,8 @@
 const mongoose = require("mongoose");
 const LocationSchema = new mongoose.Schema({
-  userName: { type: String, required: true },
-  password: { type: String, required: true },
-  logoUrl: { type: String, default: null },
-  isEmailVerification: { type: Boolean, default: false },
-  isAccountVerification: { type: Boolean, default: false },
+  
+  storeId:{type: String,required: true},
+  
   locations: [{
     locationId: { type: mongoose.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
     locationName: { type: String, required: true },
