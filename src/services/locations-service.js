@@ -3,7 +3,7 @@ const LocationRepository  = require("../database/repository/location-repository.
 const { FormateData, GenerateOTPSignature } = require("../utils");
 const { APIError } = require("../utils/app-errors");
 const { OtPGenerate } = require("../utils/verification-code-handler");
-const LocationModel = require('../database/models/Location.js'); 
+const LocationModel = require('../database/models/Location.js');
 
 
 class LocationsService {
@@ -81,10 +81,10 @@ async getLocationById(locationId, storeId) {
       throw new APIError("Store ID must be provided", 400);
     }
 
-    // Validate updateData
-    if (!updateData || Object.keys(updateData).length === 0) {
-      throw new APIError("Update data must be provided", 400);
-    }
+      // Validate updateData
+      if (!updateData || Object.keys(updateData).length === 0) {
+        throw new APIError("Update data must be provided", 400);
+      }
 
     // Call repository to update location by both locationId and storeId
     const updatedLocation = await this.repository.updateLocationByIdAndStoreId(locationId, storeId, updateData);
