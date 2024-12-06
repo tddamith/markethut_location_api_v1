@@ -6,78 +6,134 @@ const now = new Date();
 module.exports = (app) => {
   const locationService = new LocationsService();
 
-  //==================== Create new location ====================
+  // ==================== Create new location ====================
   app.post("/create/new/location", async (req, res, next) => {
     console.log("API==>", "/create/new/location");
+  
     try {
-      const { storeId, locations } = req.body; // Expecting an array of locations
+      const { storeId, locations } = req.body;
   
-      const newLocation = {
-        storeId: storeId,
-        locations: locations,
-      };
+      // Validate storeId
+      if (!storeId) {
+        return res.status(400).json({ message: "storeId is required" });
+      }
   
+      // Validate locations array
+      if (!locations || !Array.isArray(locations) || locations.length === 0) {
+        return res.status(400).json({ message: "At least one location is required" });
+      }
+  
+      // Validate each location in locations array
+      for (const loc of locations) {
+        if (!loc.locationName) {
+          return res.status(400).json({ message: "locationName is required" });
+        }
+        if (!loc.address) {
+          return res.status(400).json({ message: "address is required" });
+        }
+      }
+  
+      // Proceed to the service with valid data
+      const newLocation = { storeId, locations };
       const { data } = await locationService.createNewLocation(newLocation);
+  
       return res.json(data);
     } catch (err) {
       console.error("Error creating new location", err);
-      next(err);
+  
+      // Check for Mongoose validation errors and send proper error response
+      if (err.name === "ValidationError") {
+        return res.status(400).json({ message: err.message });
+      }
+  
+      return res.status(500).json({ message: "Internal Server Error" });
     }
   });
- 
 
-  //==================== Get Location by ID ====================
-  app.get("/get/location", async (req, res, next) => {
-    console.log("API==>", "/get/location");
+  // ==================== Get Location by ID ====================
+  app.get("/get/location/:locationId/:storeId", async (req, res, next) => {
+    console.log("API==>", "/get/location/:locationId/:storeId");
 
     try {
-        const { locationId, storeId } = req.query;
+        const locationId = req.params.locationId.trim();
+        const storeId = req.params.storeId.trim(); 
 
-        // Trim both locationId and storeId to remove any accidental spaces or newlines
-        const trimmedLocationId = locationId.trim();
-        const trimmedStoreId = storeId.trim();
+        console.log("Params==>", { locationId, storeId });
+        
+        const locationData = await locationService.getLocation(locationId, storeId);
 
-        // Call the service layer to get the location information
-        const locationData = await locationService.getLocationById(trimmedLocationId, trimmedStoreId);
-
-        // If no data is found, return an appropriate response
-        if (!locationData) {
-            return res.status(404).json({
-                message: "Location not found.",
-                status: false,
-                data: null
-            });
-        }
-
-        // Respond with the location data
         return res.json(locationData);
     } catch (err) {
         console.error("Error getting location", err);
-        next(err);
+
+        // Send a proper error response to the client
+        return res.status(500).json({
+            message: "An error occurred while retrieving the location.",
+            error: err.message
+        });
     }
 });
 
-
-
-  //==================== Update location data ====================
+  // ==================== Update location data ====================
   app.put("/update/location/:locationId/:storeId", async (req, res, next) => {
     console.log("API==>", "/update/location/:locationId/:storeId");
   
     try {
-      const { locationId, storeId } = req.params; // Get locationId and storeId from URL params
-      const updateData = req.body; // Get update data from request body
+        const { locationId, storeId } = req.params; 
+        const updateData = req.body;
   
-      // Call the service to update location by both locationId and storeId
-      const updatedLocation = await locationService.updateLocationById(locationId, storeId, updateData);
+        const response = await locationService.updateOrAddLocation(locationId, storeId, updateData);
   
-      // Return success response
-      return res.json(updatedLocation);
+        return res.json(response);
     } catch (err) {
-      console.error("Error updating location", err);
-      next(err); // Pass error to middleware
+        console.error("Error updating location", err);
+        next(err); 
     }
   });
-  
 
-  
+  // ==================== Deactivate a Location ====================
+  app.put("/location/deactivate/:locationId", async (req, res, next) => {
+    console.log("API==>", `/location/deactivate/${req.params.locationId}`);
+
+    try {
+      const { locationId } = req.params;
+
+      // Call the service to deactivate the location
+      const deactivatedLocation = await locationService.deactivateLocation(locationId);
+
+      // Return the formatted response
+      return res.json(deactivatedLocation);
+    } catch (err) {
+      console.error("Error deactivating location", err);
+      next(err);
+    }
+  });
+
+  // ==================== Reactivate a Location ====================
+  app.put("/location/reactivate", async (req, res) => {
+    const { locationId } = req.body;
+
+    if (!locationId) {
+      return res.status(400).json({
+        message: "locationId is required",
+        status: false,
+      });
+    }
+
+    try {
+      const updatedLocation = await locationService.reactivateLocation(locationId);
+
+      return res.status(200).json({
+        message: "Location reactivated successfully",
+        status: true,
+        data: updatedLocation,
+      });
+    } catch (err) {
+      console.error("Error reactivating location:", err);
+      return res.status(500).json({
+        message: err.message || "Internal Server Error",
+        status: false,
+      });
+    }
+  });
 };
